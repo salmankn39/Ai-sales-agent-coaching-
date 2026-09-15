@@ -113,6 +113,13 @@ export async function POST(req: NextRequest) {
     content: m.content,
     created_at: m.created_at,
   }));
+  // Runtime fact, not something the model has to infer: true only when no
+  // prior "ai"/"human" turn exists anywhere in this lead's history, i.e. the
+  // message we're about to generate really is the first reply ever sent to
+  // this person. Computed here (not guessed by the model from a large prompt)
+  // so it can be handed to the AI as an explicit directive instead of relying
+  // on it noticing the absence of earlier assistant turns.
+  const isFirstReply = dbMessages.every((m) => m.role === "lead");
 
   // Run the SAME brain the real setter (the GHL webhook) uses, so the Test Chat
   // is a faithful rehearsal: stage engine + "dig deeper into pain" + live
@@ -252,6 +259,7 @@ export async function POST(req: NextRequest) {
       stage: stageContext,
       language: languageDirective,
       extraInstruction: extraForReply,
+      isFirstReply,
     });
   } catch (err) {
     return NextResponse.json(
@@ -286,6 +294,7 @@ export async function POST(req: NextRequest) {
         extraInstruction: extraForReply
           ? `${extraForReply}\n\n${antiRepeatInstruction}`
           : antiRepeatInstruction,
+        isFirstReply,
       });
       if (!isRepeatReply(retry.segments, priorAiBubbles)) {
         aiResult = retry;

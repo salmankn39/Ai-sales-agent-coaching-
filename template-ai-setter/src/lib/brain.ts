@@ -93,6 +93,13 @@ export interface GenerateReplyParams {
   // no identity block. Thread age is derived from the history below, so the
   // caller never has to supply it.
   lead?: LeadContext;
+  // Runtime fact computed by the CALLER from the conversation history (true
+  // only when no prior "ai"/"human" turn exists anywhere in it) — NOT
+  // something the model is left to infer from a large prompt. Injected as an
+  // explicit directive, with matching reinforcement in the final rule-check,
+  // so the opening acknowledgment on a genuinely new conversation isn't
+  // competing for attention against everything else in the prompt.
+  isFirstReply?: boolean;
   // FOR THE MODEL BAKEOFF ONLY (scripts/model-bakeoff.ts, 2026-08-17).
   // The owner: "lets do it and see if there is even any difference bcs i have given
   // it a full script, rules, stages etc so it should be the same either way."
@@ -140,7 +147,8 @@ export async function generateReply(
     params.stage,
     params.language,
     params.extraInstruction,
-    leadContext
+    leadContext,
+    params.isFirstReply === true
   );
   const systemPrompt = `${stable}\n\n${volatile}`;
   const messages = buildMessageHistory(params.history, params.client.name);

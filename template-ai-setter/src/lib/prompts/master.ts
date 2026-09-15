@@ -170,7 +170,13 @@ export function buildSystemBlocks(
   // call site keeps compiling; per-lead by definition, so it goes in the
   // VOLATILE block only (putting it in stable would break prompt caching for
   // the whole client).
-  lead?: LeadContext
+  lead?: LeadContext,
+  // Computed by the CALLER from the conversation history (see brain.ts) —
+  // true only when this is genuinely the first reply ever sent to this
+  // person. Deliberately volatile (per-lead, per-turn), never stable: it must
+  // never be baked into the cached prefix, and it must never be left for the
+  // model to infer on its own from the absence of earlier assistant turns.
+  isFirstReply?: boolean
 ): SystemBlocks {
   const rulesSection = (client.active_rules || "").trim()
     ? `\n<absolute_rules>
@@ -338,6 +344,23 @@ HARD RAIL (most important rule in this whole prompt):
     ? `\n<who_you_are_talking_to>\n${leadLines.join("\n")}\n</who_you_are_talking_to>\n`
     : "";
 
+  // Explicit runtime fact (not inferred by the model — see isFirstReply above).
+  // Only rendered when true: the false case is already covered by the
+  // operator's own active_rules ("don't re-greet once underway"), so nothing
+  // extra needs adding to every other message.
+  const firstReplySection = isFirstReply
+    ? `\n<first_reply>
+THIS IS GENUINELY YOUR FIRST REPLY TO THIS PERSON. No message from you exists
+anywhere earlier in this conversation - this is truly the start of it, not
+something you inferred from the thread. Before anything else, open with a
+short, natural, varied greeting or acknowledgment that matches their tone
+(for example: "hey, thanks for getting in touch", "hi mate, yeah of course",
+"hey, good to hear from you") - never the same stock phrase every time. Then
+continue naturally into answering them. This applies ONLY to this one reply;
+never repeat this kind of opening greeting later in the conversation.
+</first_reply>\n`
+    : "";
+
   // STABLE: identical for every message and every lead of this client.
   // Nothing time-, lead-, or stage-dependent may appear in here — one stray
   // volatile byte invalidates the prompt cache for the whole client.
@@ -471,7 +494,7 @@ guess the date or time. If someone asks what time it is or what your timezone
 is, answer from this (you are based in ${client.timezone}). You can work out
 the time in other countries by converting from this real local time.
 </current_time>
-${leadSection}${languageSection}${stageSection}
+${leadSection}${firstReplySection}${languageSection}${stageSection}
 <output_format>
 Reply with ONLY the message text. No JSON, no metadata, no quotes around
 your message, no labels like "Response:". Just the raw message exactly as
@@ -521,6 +544,13 @@ Swedish before sending. If any of it is in English, rewrite it in Swedish.`
 Make sure you've naturally asked "snackar du svenska?" once, while keeping the
 rest of your reply in the language you've been speaking.`
       : ""
+  }${
+    isFirstReply
+      ? `
+This is genuinely your first reply to this person (see <first_reply> above).
+Confirm you opened with a short, natural, varied greeting or acknowledgment
+before anything else. If you didn't, rewrite it to add one.`
+      : ""
   }
 </rule_reminder>${
     extraInstruction && extraInstruction.trim()
@@ -545,14 +575,16 @@ export function buildSystemPrompt(
   stage?: StageContext,
   language?: LanguageDirective,
   extraInstruction?: string,
-  lead?: LeadContext
+  lead?: LeadContext,
+  isFirstReply?: boolean
 ): string {
   const { stable, volatile } = buildSystemBlocks(
     client,
     stage,
     language,
     extraInstruction,
-    lead
+    lead,
+    isFirstReply
   );
   return `${stable}\n\n${volatile}`;
 }
