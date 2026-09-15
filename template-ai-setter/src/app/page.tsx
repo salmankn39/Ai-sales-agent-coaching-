@@ -63,21 +63,39 @@ export default function TestChat() {
           { role: "ai", content: `[ERROR] ${data.error}: ${data.details ?? ""}`, ts: Date.now() },
         ]);
       } else {
-        // Render bubbles one at a time, with a delay between each, like real human texting.
+        // ONE Anthropic generation already happened server-side (see
+        // /api/test) — it just comes back as an array of short bubble-sized
+        // strings, because the SAME reply engine also drives the real live
+        // Instagram setter, where sending several quick natural-feeling
+        // texts is the intended behaviour. For this demo chat window there
+        // is no reason to re-present one generation as several separate
+        // messages, so they're joined into a single bubble (still with the
+        // model's own paragraph breaks). Voice-note segments are the one
+        // exception: an audio clip is its own distinct item and can't be
+        // merged into a text bubble, so that case keeps the original
+        // one-bubble-per-segment rendering.
         const clips: (string | null)[] = Array.isArray(data.clips) ? data.clips : [];
-        for (let i = 0; i < data.segments.length; i++) {
-          const seg = data.segments[i] as string;
-          const audio = clips[i] || undefined;
-          if (i > 0) {
-            // Delay = 1.5s base + 40ms per character (caps at 5s), like real typing speed
-            const chars = seg.length;
-            const delay = Math.min(1500 + chars * 40, 5000);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            setMessages((prev) => [...prev, { role: "ai", content: "__typing__", ts: Date.now() }]);
-            await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 1200)));
-            setMessages((prev) => prev.filter((m) => m.content !== "__typing__"));
+        const hasAudio = clips.some((c) => !!c);
+
+        if (hasAudio) {
+          for (let i = 0; i < data.segments.length; i++) {
+            const seg = data.segments[i] as string;
+            const audio = clips[i] || undefined;
+            if (i > 0) {
+              const chars = seg.length;
+              const delay = Math.min(1500 + chars * 40, 5000);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+              setMessages((prev) => [...prev, { role: "ai", content: "__typing__", ts: Date.now() }]);
+              await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 1200)));
+              setMessages((prev) => prev.filter((m) => m.content !== "__typing__"));
+            }
+            setMessages((prev) => [...prev, { role: "ai", content: seg, ts: Date.now(), audio }]);
           }
-          setMessages((prev) => [...prev, { role: "ai", content: seg, ts: Date.now(), audio }]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "ai", content: (data.segments as string[]).join("\n\n"), ts: Date.now() },
+          ]);
         }
       }
     } catch (err) {
