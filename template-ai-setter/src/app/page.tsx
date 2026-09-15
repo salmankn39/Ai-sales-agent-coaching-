@@ -17,7 +17,17 @@ export default function TestChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState("test-default");
+  // A fresh, random session id every time this page loads (mount) — NOT a
+  // fixed constant. This is what makes a genuinely new conversation: each
+  // load/reload gets its own id, so the backend creates a brand new lead row
+  // with no history, instead of every visitor/reload sharing one permanent
+  // "test-default" row and its accumulated facts forever (2026-09-15 bug).
+  // Typed only once per mount via the lazy useState initializer.
+  const [sessionId, setSessionId] = useState<string>(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  );
   const endRef = useRef<HTMLDivElement | null>(null);
   // The API behind this page is key-gated (it spends real model/TTS money and
   // writes live tables), so the page passes the operator key from its own URL:
