@@ -27,6 +27,32 @@ function newSessionId(): string {
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * Reassemble one generation's bubble array into readable text for display.
+ *
+ * The backend's splitReply() (lib/brain.ts) exists for the REAL Instagram
+ * setter, where a hard 20-word-per-bubble cap prevents spammy walls of text.
+ * When a long sentence has no comma/period to break at naturally, that cap
+ * chops it at a raw word count instead — which is correct for separate DM
+ * bubbles, but reads as a broken mid-sentence line break once rejoined into
+ * one block of text here (e.g. a stray single word stranded on its own
+ * line). Only insert a paragraph break where a segment actually ended on
+ * sentence-ending punctuation; otherwise rejoin with a plain space, since
+ * that boundary was a word-count artefact, not a real thought break.
+ */
+function joinSegments(segments: string[]): string {
+  let out = "";
+  for (const seg of segments) {
+    if (!out) {
+      out = seg;
+      continue;
+    }
+    const endedSentence = /[.!?]["')\]]*$/.test(out.trim());
+    out = endedSentence ? `${out}\n\n${seg}` : `${out} ${seg}`;
+  }
+  return out;
+}
+
 export default function TestChat() {
   const [mode, setMode] = useState<Mode>("inbound");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -82,7 +108,7 @@ export default function TestChat() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: "ai", content: (data.segments as string[]).join("\n\n"), ts: Date.now() },
+          { role: "ai", content: joinSegments(data.segments as string[]), ts: Date.now() },
         ]);
         setReactivationStarted(true);
       }
@@ -154,7 +180,7 @@ export default function TestChat() {
         } else {
           setMessages((prev) => [
             ...prev,
-            { role: "ai", content: (data.segments as string[]).join("\n\n"), ts: Date.now() },
+            { role: "ai", content: joinSegments(data.segments as string[]), ts: Date.now() },
           ]);
         }
       }
