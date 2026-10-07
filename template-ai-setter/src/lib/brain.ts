@@ -100,6 +100,10 @@ export interface GenerateReplyParams {
   // so the opening acknowledgment on a genuinely new conversation isn't
   // competing for attention against everything else in the prompt.
   isFirstReply?: boolean;
+  // True only for the one dedicated call that drafts a cold outbound
+  // re-engagement opener to a dormant lead, triggered by the operator's own
+  // note (not a lead message). See isReactivationOpener in master.ts.
+  isReactivationOpener?: boolean;
   // FOR THE MODEL BAKEOFF ONLY (scripts/model-bakeoff.ts, 2026-08-17).
   // The owner: "lets do it and see if there is even any difference bcs i have given
   // it a full script, rules, stages etc so it should be the same either way."
@@ -148,7 +152,8 @@ export async function generateReply(
     params.language,
     params.extraInstruction,
     leadContext,
-    params.isFirstReply === true
+    params.isFirstReply === true,
+    params.isReactivationOpener === true
   );
   const systemPrompt = `${stable}\n\n${volatile}`;
   const messages = buildMessageHistory(params.history, params.client.name);

@@ -173,6 +173,7 @@ create table if not exists public.clients (
   setter_notify_enabled boolean default false not null,
   setter_notify_off jsonb default '[]'::jsonb not null,
   voice_settings jsonb,
+  reactivation_playbook text default ''::text not null,
   primary key (id)
 );
 

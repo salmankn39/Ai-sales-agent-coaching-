@@ -58,6 +58,9 @@ export type Client = {
   voice_samples: string;
   active_rules: string;
   business_context: string;
+  // How to write a cold outbound re-engagement opener to a dormant lead
+  // (operator-triggered reactivation, not a reply to an inbound message).
+  reactivation_playbook?: string;
   is_active: boolean;
   timezone: string;
   // Owner-configured reply delay range (seconds) set from Jarvis ("wait 20s

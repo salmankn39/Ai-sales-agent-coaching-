@@ -30,6 +30,9 @@ export interface ClientConfig {
   active_rules: string;       // Plain-English rules ("never say lol")
   business_context: string;   // Offer, pricing, links, etc.
   timezone: string;
+  // How to write a cold outbound re-engagement opener to a dormant lead.
+  // Only read when isReactivationOpener is true - see buildSystemBlocks.
+  reactivation_playbook?: string;
 }
 
 export interface Message {
@@ -176,7 +179,14 @@ export function buildSystemBlocks(
   // person. Deliberately volatile (per-lead, per-turn), never stable: it must
   // never be baked into the cached prefix, and it must never be left for the
   // model to infer on its own from the absence of earlier assistant turns.
-  isFirstReply?: boolean
+  isFirstReply?: boolean,
+  // True only for the one special call that drafts a cold outbound
+  // re-engagement opener to a dormant lead (triggered by the operator, not
+  // by a lead message). Deliberately volatile, like isFirstReply: it only
+  // ever applies to a single, distinct call, never baked into the cached
+  // stable prefix. Mutually exclusive with isFirstReply in practice — one is
+  // "a lead messaged in first", the other is "the operator starts it".
+  isReactivationOpener?: boolean
 ): SystemBlocks {
   const rulesSection = (client.active_rules || "").trim()
     ? `\n<absolute_rules>
@@ -361,6 +371,23 @@ never repeat this kind of opening greeting later in the conversation.
 </first_reply>\n`
     : "";
 
+  // Only rendered for the one dedicated reactivation-opener call. The
+  // "message" in the conversation history for this call is the OPERATOR's
+  // note about a dormant lead, not something the lead said - this section
+  // overrides the engine's normal "react to what they just said" behaviour,
+  // which would otherwise misread the operator's note as the lead talking.
+  const reactivationSection = isReactivationOpener
+    ? `\n<reactivation_opener>
+The message below is a NOTE FROM THE BUSINESS OWNER describing a dormant/old
+lead to re-engage - it is NOT a message from the lead, and the lead has not
+said anything in this conversation. Do not react to the note as if it were
+the lead talking, and do not address or reply to the owner. Your job is to
+write ONLY the outbound opening message(s) you would send to the lead
+described in that note.
+${(client.reactivation_playbook || "").trim()}
+</reactivation_opener>\n`
+    : "";
+
   // STABLE: identical for every message and every lead of this client.
   // Nothing time-, lead-, or stage-dependent may appear in here — one stray
   // volatile byte invalidates the prompt cache for the whole client.
@@ -494,7 +521,7 @@ guess the date or time. If someone asks what time it is or what your timezone
 is, answer from this (you are based in ${client.timezone}). You can work out
 the time in other countries by converting from this real local time.
 </current_time>
-${leadSection}${firstReplySection}${languageSection}${stageSection}
+${leadSection}${firstReplySection}${reactivationSection}${languageSection}${stageSection}
 <output_format>
 Reply with ONLY the message text. No JSON, no metadata, no quotes around
 your message, no labels like "Response:". Just the raw message exactly as
@@ -551,6 +578,16 @@ This is genuinely your first reply to this person (see <first_reply> above).
 Confirm you opened with a short, natural, varied greeting or acknowledgment
 before anything else. If you didn't, rewrite it to add one.`
       : ""
+  }${
+    isReactivationOpener
+      ? `
+Confirm your reply is written as an outbound opener TO the dormant lead
+described in the owner's note (see <reactivation_opener> above) - not a
+reply to the owner, and not inventing any specific detail the note didn't
+actually give you. If it reads like you're talking to the owner, or like
+you're re-offering a free trial to someone who already had a session,
+rewrite it.`
+      : ""
   }
 </rule_reminder>${
     extraInstruction && extraInstruction.trim()
@@ -576,7 +613,8 @@ export function buildSystemPrompt(
   language?: LanguageDirective,
   extraInstruction?: string,
   lead?: LeadContext,
-  isFirstReply?: boolean
+  isFirstReply?: boolean,
+  isReactivationOpener?: boolean
 ): string {
   const { stable, volatile } = buildSystemBlocks(
     client,
@@ -584,7 +622,8 @@ export function buildSystemPrompt(
     language,
     extraInstruction,
     lead,
-    isFirstReply
+    isFirstReply,
+    isReactivationOpener
   );
   return `${stable}\n\n${volatile}`;
 }
