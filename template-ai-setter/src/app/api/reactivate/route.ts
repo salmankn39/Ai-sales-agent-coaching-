@@ -112,6 +112,43 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Empty-response guard — see the matching comment in /api/test/route.ts.
+  // The model occasionally returns a 200 OK with no text content at all; one
+  // automatic retry recovers almost all of these instead of silently
+  // "drafting" an empty opener.
+  if (!aiResult.segments.some((s) => s.trim().length > 0)) {
+    try {
+      const retry = await generateReply({
+        client: {
+          name: client.name,
+          slug: client.slug,
+          system_prompt: client.system_prompt,
+          voice_samples: client.voice_samples,
+          active_rules: client.active_rules,
+          business_context: client.business_context,
+          timezone: client.timezone,
+          reactivation_playbook: client.reactivation_playbook,
+        },
+        history: ephemeralHistory,
+        isReactivationOpener: true,
+      });
+      if (retry.segments.some((s) => s.trim().length > 0)) {
+        aiResult = retry;
+      }
+    } catch (err) {
+      console.error("[reactivate] empty-response retry failed:", err);
+    }
+  }
+  if (!aiResult.segments.some((s) => s.trim().length > 0)) {
+    return NextResponse.json(
+      {
+        error: "AI generation failed",
+        details: "The AI returned an empty response twice in a row. Please try again.",
+      },
+      { status: 500 }
+    );
+  }
+
   const segments = aiResult.segments.map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < segments.length; i++) {
     await saveMessage({

@@ -304,6 +304,48 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Empty-response guard. The model occasionally returns a 200 OK with
+  // genuinely no text content at all (confirmed via ai_decisions.raw_response
+  // being "" with no error - not a bug in cleaning/splitting, the API itself
+  // returned nothing). Silently "succeeding" with zero segments is
+  // indistinguishable from the app going silent, which is exactly what this
+  // looked like live. One automatic retry recovers almost all of these.
+  const hasContent = (segs: string[]) => segs.some((s) => s.trim().length > 0);
+  if (!hasContent(aiResult.segments)) {
+    try {
+      const retry = await generateReply({
+        client: {
+          name: client.name,
+          slug: client.slug,
+          system_prompt: client.system_prompt,
+          voice_samples: client.voice_samples,
+          active_rules: client.active_rules,
+          business_context: client.business_context,
+          timezone: client.timezone,
+        },
+        history,
+        stage: stageContext,
+        language: languageDirective,
+        extraInstruction: extraForReply,
+        isFirstReply,
+      });
+      if (hasContent(retry.segments)) {
+        aiResult = retry;
+      }
+    } catch (err) {
+      console.error("[test] empty-response retry failed:", err);
+    }
+  }
+  if (!hasContent(aiResult.segments)) {
+    return NextResponse.json(
+      {
+        error: "AI generation failed",
+        details: "The AI returned an empty response twice in a row. Please try sending your message again.",
+      },
+      { status: 500 }
+    );
+  }
+
   // The words said (saved to history), voice marker stripped.
   const saveSegments = aiResult.segments.map((s) => s.replace(VOICE_MARKER_RE, "").trim());
   // Real cloned-voice clips so the demo actually PLAYS the voice note instead of
