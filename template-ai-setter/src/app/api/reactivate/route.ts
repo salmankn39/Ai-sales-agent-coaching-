@@ -154,13 +154,11 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!aiResult.segments.some((s) => s.trim().length > 0)) {
-    return NextResponse.json(
-      {
-        error: "AI generation failed",
-        details: "The AI returned an empty response twice in a row. Please try again.",
-      },
-      { status: 500 }
-    );
+    // Still empty after one retry (rare). Fall back to a clean message
+    // instead of a raw error, through the exact same save/return path as a
+    // normal successful opener - see the matching comment in
+    // /api/test/route.ts.
+    aiResult.segments = ["Sorry, I had a slight issue there. Could you send that again?"];
   }
 
   const segments = aiResult.segments.map((s) => s.trim()).filter(Boolean);

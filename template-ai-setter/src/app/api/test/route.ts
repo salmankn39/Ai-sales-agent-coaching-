@@ -337,13 +337,13 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!hasContent(aiResult.segments)) {
-    return NextResponse.json(
-      {
-        error: "AI generation failed",
-        details: "The AI returned an empty response twice in a row. Please try sending your message again.",
-      },
-      { status: 500 }
-    );
+    // Still empty after one retry (rare). Rather than surface a raw
+    // technical error mid-demo, fall back to a clean, human-sounding reply
+    // and let it flow through the exact same save/return path as a normal
+    // successful turn - no special-cased error state, no risk of a
+    // duplicated or orphaned message.
+    aiResult.segments = ["Sorry, I had a slight issue there. Could you send that again?"];
+    aiResult.reply = aiResult.segments[0];
   }
 
   // The words said (saved to history), voice marker stripped.
