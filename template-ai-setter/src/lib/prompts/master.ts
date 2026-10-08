@@ -186,7 +186,11 @@ export function buildSystemBlocks(
   // ever applies to a single, distinct call, never baked into the cached
   // stable prefix. Mutually exclusive with isFirstReply in practice — one is
   // "a lead messaged in first", the other is "the operator starts it".
-  isReactivationOpener?: boolean
+  isReactivationOpener?: boolean,
+  // Which historical situation this dormant lead is in, decided ONCE and
+  // deterministically by lib/reactivation.ts's classifier - not re-guessed by
+  // this creative call. Only meaningful alongside isReactivationOpener.
+  reactivationSegment?: "never_attended" | "attended_before"
 ): SystemBlocks {
   const rulesSection = (client.active_rules || "").trim()
     ? `\n<absolute_rules>
@@ -384,7 +388,15 @@ said anything in this conversation. Do not react to the note as if it were
 the lead talking, and do not address or reply to the owner. Your job is to
 write ONLY the outbound opening message(s) you would send to the lead
 described in that note.
-${(client.reactivation_playbook || "").trim()}
+${
+  reactivationSegment
+    ? `\nLEAD SEGMENT (already determined, do not re-guess it): ${
+        reactivationSegment === "attended_before"
+          ? "attended_before - they attended at least one real session before they stopped engaging."
+          : "never_attended - they enquired or showed interest but never actually attended a real session (this includes a no-show on a booked trial)."
+      }\n`
+    : ""
+}${(client.reactivation_playbook || "").trim()}
 </reactivation_opener>\n`
     : "";
 
@@ -614,7 +626,8 @@ export function buildSystemPrompt(
   extraInstruction?: string,
   lead?: LeadContext,
   isFirstReply?: boolean,
-  isReactivationOpener?: boolean
+  isReactivationOpener?: boolean,
+  reactivationSegment?: "never_attended" | "attended_before"
 ): string {
   const { stable, volatile } = buildSystemBlocks(
     client,
@@ -623,7 +636,8 @@ export function buildSystemPrompt(
     extraInstruction,
     lead,
     isFirstReply,
-    isReactivationOpener
+    isReactivationOpener,
+    reactivationSegment
   );
   return `${stable}\n\n${volatile}`;
 }

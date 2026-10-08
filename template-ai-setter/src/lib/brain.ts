@@ -104,6 +104,10 @@ export interface GenerateReplyParams {
   // re-engagement opener to a dormant lead, triggered by the operator's own
   // note (not a lead message). See isReactivationOpener in master.ts.
   isReactivationOpener?: boolean;
+  // Which historical situation this dormant lead is in (decided once,
+  // deterministically, by lib/reactivation.ts's classifier). Only meaningful
+  // alongside isReactivationOpener.
+  reactivationSegment?: "never_attended" | "attended_before";
   // FOR THE MODEL BAKEOFF ONLY (scripts/model-bakeoff.ts, 2026-08-17).
   // The owner: "lets do it and see if there is even any difference bcs i have given
   // it a full script, rules, stages etc so it should be the same either way."
@@ -153,7 +157,8 @@ export async function generateReply(
     params.extraInstruction,
     leadContext,
     params.isFirstReply === true,
-    params.isReactivationOpener === true
+    params.isReactivationOpener === true,
+    params.reactivationSegment
   );
   const systemPrompt = `${stable}\n\n${volatile}`;
   const messages = buildMessageHistory(params.history, params.client.name);

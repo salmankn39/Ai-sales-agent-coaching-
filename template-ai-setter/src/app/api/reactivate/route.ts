@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient, findOrCreateLead, saveMessage, supabase } from "@/lib/supabase";
 import { generateReply, PRODUCTION_MODEL } from "@/lib/brain";
+import { classifyReactivationSegment } from "@/lib/reactivation";
 import { getAccessKey } from "@/lib/prompter/access";
 import { ownerSlug } from "@/lib/tenant";
 
@@ -75,6 +76,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create lead" }, { status: 500 });
   }
 
+  // Decided ONCE, deterministically, from the operator's note - not
+  // re-guessed by the creative opener call, and not re-guessed turn-by-turn
+  // later. Persisted onto the lead as a known fact (same mechanism as any
+  // other captured fact, e.g. age/goal) so every later reply in the normal
+  // stage engine can see it too, not just this one opener message.
+  const reactivationSegment = await classifyReactivationSegment(body.note.trim());
+  await supabase
+    .from("leads")
+    .update({ stage_data: { reactivation_segment: reactivationSegment } })
+    .eq("id", lead.id);
+
   // The operator's note is what the model reads, but it is NEVER saved as a
   // real message — it's an instruction, not something said in the
   // conversation. Only the drafted opener becomes a real, persisted message.
@@ -101,6 +113,7 @@ export async function POST(req: NextRequest) {
       },
       history: ephemeralHistory,
       isReactivationOpener: true,
+      reactivationSegment,
     });
   } catch (err) {
     return NextResponse.json(
@@ -131,6 +144,7 @@ export async function POST(req: NextRequest) {
         },
         history: ephemeralHistory,
         isReactivationOpener: true,
+        reactivationSegment,
       });
       if (retry.segments.some((s) => s.trim().length > 0)) {
         aiResult = retry;
